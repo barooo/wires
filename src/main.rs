@@ -83,6 +83,8 @@ enum Commands {
         /// Wire ID that it depends on
         depends_on: String,
     },
+    /// Find wires ready to work on
+    Ready,
 }
 
 fn main() -> Result<()> {
@@ -121,5 +123,6 @@ fn main() -> Result<()> {
             wire_id,
             depends_on,
         } => commands::undep::run(&wire_id, &depends_on),
+        Commands::Ready => commands::ready::run(),
     }
 }

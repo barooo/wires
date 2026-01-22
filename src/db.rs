@@ -219,52 +219,55 @@ pub fn check_incomplete_dependencies(
     Ok(deps)
 }
 
+/// Map a row to a Wire struct (shared by list_wires, get_wire_with_deps, get_ready_wires)
+fn wire_from_row(row: &rusqlite::Row) -> rusqlite::Result<crate::models::Wire> {
+    use crate::models::{Status, Wire};
+    use std::str::FromStr;
+
+    let description: Option<String> = row.get(2)?;
+    let description = description.filter(|s| !s.is_empty());
+
+    Ok(Wire {
+        id: row.get(0)?,
+        title: row.get(1)?,
+        description,
+        status: Status::from_str(row.get::<_, String>(3)?.as_str())
+            .map_err(|_| rusqlite::Error::InvalidQuery)?,
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
+        priority: row.get(6)?,
+    })
+}
+
 /// List wires, optionally filtered by status
 pub fn list_wires(
     conn: &Connection,
     status_filter: Option<&str>,
 ) -> Result<Vec<crate::models::Wire>> {
-    use crate::models::{Status, Wire};
-    use std::str::FromStr;
-
-    let mut query = String::from(
-        "SELECT id, title, description, status, created_at, updated_at, priority FROM wires",
-    );
-
     if let Some(status) = status_filter {
-        query.push_str(&format!(" WHERE status = '{}'", status));
+        let mut stmt = conn.prepare(
+            "SELECT id, title, description, status, created_at, updated_at, priority
+             FROM wires WHERE status = ? ORDER BY created_at DESC",
+        )?;
+        let wires = stmt
+            .query_map([status], wire_from_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(wires)
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT id, title, description, status, created_at, updated_at, priority
+             FROM wires ORDER BY created_at DESC",
+        )?;
+        let wires = stmt
+            .query_map([], wire_from_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(wires)
     }
-
-    query.push_str(" ORDER BY created_at DESC");
-
-    let mut stmt = conn.prepare(&query)?;
-    let wires = stmt.query_map([], |row| {
-        let description: Option<String> = row.get(2)?;
-        let description = description.filter(|s| !s.is_empty());
-
-        Ok(Wire {
-            id: row.get(0)?,
-            title: row.get(1)?,
-            description,
-            status: Status::from_str(row.get::<_, String>(3)?.as_str())
-                .map_err(|_| rusqlite::Error::InvalidQuery)?,
-            created_at: row.get(4)?,
-            updated_at: row.get(5)?,
-            priority: row.get(6)?,
-        })
-    })?;
-
-    let mut result = Vec::new();
-    for wire in wires {
-        result.push(wire?);
-    }
-
-    Ok(result)
 }
 
 /// Get a wire with its dependency information
 pub fn get_wire_with_deps(conn: &Connection, wire_id: &str) -> Result<crate::models::WireWithDeps> {
-    use crate::models::{DependencyInfo, Status, Wire, WireWithDeps};
+    use crate::models::{DependencyInfo, Status, WireWithDeps};
     use std::str::FromStr;
 
     // Get the wire
@@ -273,21 +276,7 @@ pub fn get_wire_with_deps(conn: &Connection, wire_id: &str) -> Result<crate::mod
          FROM wires WHERE id = ?1",
     )?;
 
-    let wire = stmt.query_row([wire_id], |row| {
-        let description: Option<String> = row.get(2)?;
-        let description = description.filter(|s| !s.is_empty());
-
-        Ok(Wire {
-            id: row.get(0)?,
-            title: row.get(1)?,
-            description,
-            status: Status::from_str(row.get::<_, String>(3)?.as_str())
-                .map_err(|_| rusqlite::Error::InvalidQuery)?,
-            created_at: row.get(4)?,
-            updated_at: row.get(5)?,
-            priority: row.get(6)?,
-        })
-    })?;
+    let wire = stmt.query_row([wire_id], wire_from_row)?;
 
     // Get dependencies (wires this wire depends on)
     let mut stmt = conn.prepare(
@@ -448,6 +437,35 @@ pub fn remove_dependency(conn: &Connection, wire_id: &str, depends_on: &str) -> 
     )?;
 
     Ok(())
+}
+
+/// Get wires that are ready to work on (no incomplete dependencies)
+/// Returns wires sorted by: IN_PROGRESS first, then TODO, then by priority (descending)
+pub fn get_ready_wires(conn: &Connection) -> Result<Vec<crate::models::Wire>> {
+    let query = "
+        SELECT w.id, w.title, w.description, w.status, w.created_at, w.updated_at, w.priority
+        FROM wires w
+        WHERE w.status IN ('TODO', 'IN_PROGRESS')
+        AND NOT EXISTS (
+            SELECT 1 FROM dependencies d
+            JOIN wires dep ON d.depends_on = dep.id
+            WHERE d.wire_id = w.id
+            AND dep.status != 'DONE'
+        )
+        ORDER BY
+            CASE w.status
+                WHEN 'IN_PROGRESS' THEN 0
+                WHEN 'TODO' THEN 1
+            END,
+            w.priority DESC
+    ";
+
+    let mut stmt = conn.prepare(query)?;
+    let wires = stmt
+        .query_map([], wire_from_row)?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(wires)
 }
 
 #[cfg(test)]
