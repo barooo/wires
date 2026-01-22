@@ -206,6 +206,21 @@ impl FromStr for Status {
 /// - A status indicating progress
 /// - Timestamps for creation and last update
 /// - A priority for ordering (higher = more important)
+///
+/// # Construction
+///
+/// Use [`Wire::new`] to create a new wire with automatic ID generation
+/// and timestamp initialization. For reading from database, fields are
+/// public to allow direct construction.
+///
+/// # Example
+///
+/// ```
+/// use wr::models::Wire;
+///
+/// let wire = Wire::new("Implement feature X", None, 0).unwrap();
+/// assert!(!wire.id.as_str().is_empty());
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Wire {
     /// Unique 7-character hexadecimal identifier
@@ -223,6 +238,74 @@ pub struct Wire {
     pub updated_at: i64,
     /// Priority level (higher values = higher priority)
     pub priority: i32,
+}
+
+/// Error type for Wire construction failures.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WireConstructionError {
+    /// Title cannot be empty
+    EmptyTitle,
+}
+
+impl fmt::Display for WireConstructionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            WireConstructionError::EmptyTitle => write!(f, "Wire title cannot be empty"),
+        }
+    }
+}
+
+impl std::error::Error for WireConstructionError {}
+
+impl Wire {
+    /// Creates a new wire with automatic ID generation and timestamps.
+    ///
+    /// # Arguments
+    ///
+    /// * `title` - A non-empty title for the wire
+    /// * `description` - Optional detailed description
+    /// * `priority` - Priority level (higher = more important)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the title is empty or contains only whitespace.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use wr::models::Wire;
+    ///
+    /// let wire = Wire::new("Fix bug", Some("Critical issue"), 5).unwrap();
+    /// assert_eq!(wire.title, "Fix bug");
+    /// assert_eq!(wire.priority, 5);
+    /// ```
+    pub fn new(
+        title: &str,
+        description: Option<&str>,
+        priority: i32,
+    ) -> Result<Self, WireConstructionError> {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err(WireConstructionError::EmptyTitle);
+        }
+
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs() as i64;
+
+        Ok(Wire {
+            id: crate::generate_id(title),
+            title: title.to_string(),
+            description: description.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+            status: Status::Todo,
+            created_at: now,
+            updated_at: now,
+            priority,
+        })
+    }
 }
 
 /// A wire with its full dependency information.
@@ -409,5 +492,44 @@ mod tests {
                 .to_string(),
             "Circular dependency detected: a -> b -> a"
         );
+    }
+
+    #[test]
+    fn test_wire_new_creates_wire() {
+        let wire = Wire::new("Test wire", None, 0).unwrap();
+        assert_eq!(wire.title, "Test wire");
+        assert_eq!(wire.description, None);
+        assert_eq!(wire.status, Status::Todo);
+        assert_eq!(wire.priority, 0);
+        assert_eq!(wire.id.as_str().len(), 7);
+    }
+
+    #[test]
+    fn test_wire_new_with_description() {
+        let wire = Wire::new("Test", Some("Description"), 5).unwrap();
+        assert_eq!(wire.description, Some("Description".to_string()));
+        assert_eq!(wire.priority, 5);
+    }
+
+    #[test]
+    fn test_wire_new_trims_whitespace() {
+        let wire = Wire::new("  Test  ", Some("  Desc  "), 0).unwrap();
+        assert_eq!(wire.title, "Test");
+        assert_eq!(wire.description, Some("Desc".to_string()));
+    }
+
+    #[test]
+    fn test_wire_new_empty_title_fails() {
+        assert!(Wire::new("", None, 0).is_err());
+        assert!(Wire::new("   ", None, 0).is_err());
+    }
+
+    #[test]
+    fn test_wire_new_empty_description_becomes_none() {
+        let wire = Wire::new("Test", Some(""), 0).unwrap();
+        assert_eq!(wire.description, None);
+
+        let wire = Wire::new("Test", Some("   "), 0).unwrap();
+        assert_eq!(wire.description, None);
     }
 }
