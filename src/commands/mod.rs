@@ -1,6 +1,7 @@
 pub mod cancel;
 pub mod dep;
 pub mod done;
+pub mod graph;
 pub mod init;
 pub mod list;
 pub mod new;

@@ -90,6 +90,12 @@ enum Commands {
         /// Wire ID
         id: String,
     },
+    /// Export dependency graph
+    Graph {
+        /// Output format (json)
+        #[arg(short, long, default_value = "json")]
+        format: String,
+    },
 }
 
 fn main() {
@@ -130,6 +136,7 @@ fn main() {
         } => commands::undep::run(&wire_id, &depends_on),
         Commands::Ready => commands::ready::run(),
         Commands::Rm { id } => commands::rm::run(&id),
+        Commands::Graph { format } => commands::graph::run(Some(&format)),
     };
 
     if let Err(e) = result {
