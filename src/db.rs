@@ -334,6 +334,122 @@ pub fn get_wire_with_deps(conn: &Connection, wire_id: &str) -> Result<crate::mod
     })
 }
 
+/// Check if adding a dependency would create a cycle using DFS
+fn would_create_cycle(
+    conn: &Connection,
+    wire_id: &str,
+    depends_on: &str,
+) -> Result<Option<Vec<String>>> {
+    use std::collections::{HashSet, VecDeque};
+
+    // If wire depends on itself, that's a cycle
+    if wire_id == depends_on {
+        return Ok(Some(vec![wire_id.to_string(), wire_id.to_string()]));
+    }
+
+    // DFS to check if we can reach wire_id starting from depends_on
+    let mut visited = HashSet::new();
+    let mut stack = VecDeque::new();
+    let mut parent_map: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+
+    stack.push_back(depends_on.to_string());
+
+    while let Some(current) = stack.pop_back() {
+        if visited.contains(&current) {
+            continue;
+        }
+
+        visited.insert(current.clone());
+
+        // If we reached the original wire, we found a cycle
+        if current == wire_id {
+            // Reconstruct the cycle path
+            let mut path = vec![wire_id.to_string()];
+            let mut node = depends_on.to_string();
+
+            while node != wire_id {
+                path.push(node.clone());
+                if let Some(parent) = parent_map.get(&node) {
+                    node = parent.clone();
+                } else {
+                    break;
+                }
+            }
+
+            path.push(wire_id.to_string());
+            path.reverse();
+            return Ok(Some(path));
+        }
+
+        // Get all wires that current depends on
+        let mut stmt = conn.prepare("SELECT depends_on FROM dependencies WHERE wire_id = ?1")?;
+
+        let deps: Vec<String> = stmt
+            .query_map([&current], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        for dep in deps {
+            if !visited.contains(&dep) {
+                parent_map.insert(dep.clone(), current.clone());
+                stack.push_back(dep);
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+/// Add a dependency between two wires
+pub fn add_dependency(conn: &Connection, wire_id: &str, depends_on: &str) -> Result<()> {
+    // Check if both wires exist
+    let wire_exists: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM wires WHERE id = ?1",
+        [wire_id],
+        |row| row.get(0),
+    )?;
+
+    if wire_exists == 0 {
+        return Err(anyhow!("Wire not found: {}", wire_id));
+    }
+
+    let depends_on_exists: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM wires WHERE id = ?1",
+        [depends_on],
+        |row| row.get(0),
+    )?;
+
+    if depends_on_exists == 0 {
+        return Err(anyhow!("Wire not found: {}", depends_on));
+    }
+
+    // Check for circular dependency
+    if let Some(cycle) = would_create_cycle(conn, wire_id, depends_on)? {
+        return Err(anyhow!(
+            "Circular dependency detected: {}",
+            cycle.join(" -> ")
+        ));
+    }
+
+    // Add the dependency
+    conn.execute(
+        "INSERT OR IGNORE INTO dependencies (wire_id, depends_on) VALUES (?1, ?2)",
+        [wire_id, depends_on],
+    )?;
+
+    Ok(())
+}
+
+/// Remove a dependency between two wires
+pub fn remove_dependency(conn: &Connection, wire_id: &str, depends_on: &str) -> Result<()> {
+    conn.execute(
+        "DELETE FROM dependencies WHERE wire_id = ?1 AND depends_on = ?2",
+        [wire_id, depends_on],
+    )?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

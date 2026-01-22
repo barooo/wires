@@ -69,6 +69,20 @@ enum Commands {
         /// Wire ID
         id: String,
     },
+    /// Add a dependency (wire_id depends on depends_on)
+    Dep {
+        /// Wire ID that has the dependency
+        wire_id: String,
+        /// Wire ID that it depends on
+        depends_on: String,
+    },
+    /// Remove a dependency
+    Undep {
+        /// Wire ID that has the dependency
+        wire_id: String,
+        /// Wire ID that it depends on
+        depends_on: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -99,5 +113,13 @@ fn main() -> Result<()> {
         Commands::Start { id } => commands::start::run(&id),
         Commands::Done { id } => commands::done::run(&id),
         Commands::Cancel { id } => commands::cancel::run(&id),
+        Commands::Dep {
+            wire_id,
+            depends_on,
+        } => commands::dep::run(&wire_id, &depends_on),
+        Commands::Undep {
+            wire_id,
+            depends_on,
+        } => commands::undep::run(&wire_id, &depends_on),
     }
 }
