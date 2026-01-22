@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use serde_json::json;
+use std::io::IsTerminal;
 
 mod commands;
 
@@ -153,8 +154,16 @@ fn main() {
 
     if let Err(e) = result {
         let error_msg = e.to_string();
-        let error_json = json!({ "error": error_msg });
-        eprintln!("{}", serde_json::to_string(&error_json).unwrap());
+
+        if std::io::stderr().is_terminal() {
+            // Human-friendly output for interactive use
+            eprintln!("Error: {}", error_msg);
+        } else {
+            // JSON output for programmatic use
+            let error_json = json!({ "error": error_msg });
+            eprintln!("{}", serde_json::to_string(&error_json).unwrap());
+        }
+
         std::process::exit(1);
     }
 }
