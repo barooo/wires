@@ -578,4 +578,114 @@ mod tests {
             .to_string()
             .contains("Not a wires repository"));
     }
+
+    // Helper to set up a test database with schema
+    fn setup_test_db() -> (TempDir, Connection) {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path();
+        init(path).unwrap();
+        let db_path = path.join(WIRES_DIR).join(DB_NAME);
+        let conn = Connection::open(db_path).unwrap();
+        (temp_dir, conn)
+    }
+
+    // Helper to insert a test wire
+    fn insert_test_wire(conn: &Connection, id: &str) {
+        conn.execute(
+            "INSERT INTO wires (id, title, status, created_at, updated_at, priority)
+             VALUES (?1, ?2, 'TODO', 0, 0, 0)",
+            [id, &format!("Wire {}", id)],
+        )
+        .unwrap();
+    }
+
+    // Helper to insert a dependency
+    fn insert_test_dep(conn: &Connection, wire_id: &str, depends_on: &str) {
+        conn.execute(
+            "INSERT INTO dependencies (wire_id, depends_on) VALUES (?1, ?2)",
+            [wire_id, depends_on],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_cycle_detection_self_reference() {
+        let (_temp_dir, conn) = setup_test_db();
+        insert_test_wire(&conn, "a");
+
+        let result = would_create_cycle(&conn, "a", "a").unwrap();
+
+        assert!(result.is_some());
+        let cycle = result.unwrap();
+        assert_eq!(cycle, vec!["a", "a"]);
+    }
+
+    #[test]
+    fn test_cycle_detection_direct_cycle() {
+        let (_temp_dir, conn) = setup_test_db();
+        insert_test_wire(&conn, "a");
+        insert_test_wire(&conn, "b");
+
+        // a depends on b
+        insert_test_dep(&conn, "a", "b");
+
+        // Would b -> a create a cycle? Yes: b -> a -> b
+        let result = would_create_cycle(&conn, "b", "a").unwrap();
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_cycle_detection_indirect_cycle() {
+        let (_temp_dir, conn) = setup_test_db();
+        insert_test_wire(&conn, "a");
+        insert_test_wire(&conn, "b");
+        insert_test_wire(&conn, "c");
+
+        // Chain: a -> b -> c
+        insert_test_dep(&conn, "a", "b");
+        insert_test_dep(&conn, "b", "c");
+
+        // Would c -> a create a cycle? Yes: c -> a -> b -> c
+        let result = would_create_cycle(&conn, "c", "a").unwrap();
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_cycle_detection_no_cycle() {
+        let (_temp_dir, conn) = setup_test_db();
+        insert_test_wire(&conn, "a");
+        insert_test_wire(&conn, "b");
+        insert_test_wire(&conn, "c");
+
+        // a -> b (no chain to c)
+        insert_test_dep(&conn, "a", "b");
+
+        // Would c -> a create a cycle? No, there's no path from a to c
+        let result = would_create_cycle(&conn, "c", "a").unwrap();
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_cycle_detection_diamond_allowed() {
+        let (_temp_dir, conn) = setup_test_db();
+        insert_test_wire(&conn, "a");
+        insert_test_wire(&conn, "b");
+        insert_test_wire(&conn, "c");
+        insert_test_wire(&conn, "d");
+
+        // Diamond: d -> b, d -> c, b -> a, c -> a
+        insert_test_dep(&conn, "d", "b");
+        insert_test_dep(&conn, "d", "c");
+        insert_test_dep(&conn, "b", "a");
+        insert_test_dep(&conn, "c", "a");
+
+        // This is a valid DAG (diamond shape), not a cycle
+        // Adding another dep from d to a should be allowed
+        let result = would_create_cycle(&conn, "d", "a").unwrap();
+
+        assert!(result.is_none());
+    }
 }

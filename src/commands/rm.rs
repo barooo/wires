@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use serde_json::json;
 use wr::db;
 
@@ -16,12 +16,7 @@ pub fn run(id: &str) -> Result<()> {
     )?;
 
     if exists == 0 {
-        let error = json!({
-            "error": "Wire not found",
-            "id": id
-        });
-        eprintln!("{}", serde_json::to_string(&error)?);
-        std::process::exit(1);
+        return Err(anyhow!("Wire not found: {}", id));
     }
 
     // Delete the wire (dependencies are cascaded by foreign key)

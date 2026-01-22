@@ -1,5 +1,5 @@
-use anyhow::Result;
 use clap::{Parser, Subcommand};
+use serde_json::json;
 
 mod commands;
 
@@ -92,10 +92,10 @@ enum Commands {
     },
 }
 
-fn main() -> Result<()> {
+fn main() {
     let cli = Cli::parse();
 
-    match cli.command {
+    let result = match cli.command {
         Commands::Init => commands::init::run(),
         Commands::New {
             title,
@@ -130,5 +130,12 @@ fn main() -> Result<()> {
         } => commands::undep::run(&wire_id, &depends_on),
         Commands::Ready => commands::ready::run(),
         Commands::Rm { id } => commands::rm::run(&id),
+    };
+
+    if let Err(e) = result {
+        let error_msg = e.to_string();
+        let error_json = json!({ "error": error_msg });
+        eprintln!("{}", serde_json::to_string(&error_json).unwrap());
+        std::process::exit(1);
     }
 }
