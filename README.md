@@ -2,37 +2,23 @@
 
 Lightweight local task tracker optimized for AI coding agents.
 
-## Motivation: Memory for Agentic Development
+## Motivation
 
-AI coding agents face a unique challenge: **context loss**. Long conversations get compacted, sessions end, and without persistent memory, agents lose track of:
-- What tasks were planned
-- What's already completed
-- What dependencies exist between tasks
-- What should be worked on next
+AI coding agents lose context. Conversations get compacted, sessions end, and without persistent memory, the plan disappears. `wires` provides **external memory** that survives these boundaries:
 
-`wires` solves this by providing **persistent, structured memory** that survives context windows and session boundaries.
+- `wr ready` shows what's unblocked after context loss
+- Dependencies track what must complete before other work begins
+- Progress persists across sessions spanning days or weeks
 
-### The Problem
+### Why Rust?
 
-When working on complex, multi-step projects with AI agents:
+A task tracker for AI agents must be reliable—bugs in the tracking tool compound confusion. Rust's type system eliminates entire classes of runtime errors:
 
-1. **Context windows fill up** - Conversations get summarized, losing task details
-2. **Sessions end** - You come back later and the agent has no memory of the plan
-3. **Complex dependencies** - Hard to track what must complete before other work begins
-4. **Lost progress** - Without records, agents duplicate work or lose track of what's done
-5. **No continuity** - Each session feels like starting over
+- **Newtypes** prevent mixing wire IDs with arbitrary strings
+- **Enums** validate status and format at compile time
+- **Domain errors** are pattern-matchable (NotARepository, CircularDependency, etc.)
 
-### The Solution
-
-`wires` acts as **external memory** for agentic workflows:
-
-- **Context recovery**: After compaction/restart, `wr ready` shows exactly what to work on next
-- **Persistent plans**: Break complex work into wires with dependencies, stored locally
-- **Progress tracking**: See what's done, in progress, or blocked at any time
-- **Dependency awareness**: Agents know what must complete before starting new work
-- **Session continuity**: Pick up exactly where you left off, even days later
-
-Think of it as a lightweight issue tracker, but optimized for the unique constraints of AI development: local-only, JSON-native, dependency-aware, and designed to survive context loss.
+The result: fewer edge cases, better error messages, and confidence that `wr ready` returns exactly what it should.
 
 ## Overview
 
@@ -44,7 +30,6 @@ Think of it as a lightweight issue tracker, but optimized for the unique constra
 - Dependency tracking with circular dependency prevention
 - `ready` command to find unblocked tasks
 - GraphViz DOT export for visualization
-- Type-safe Rust implementation with compile-time validation
 
 ## Installation
 
@@ -310,17 +295,6 @@ Exit code is non-zero on error.
 - `CANCELLED` / `cancelled` - Abandoned
 
 Status arguments accept both kebab-case (`in-progress`) and uppercase (`IN_PROGRESS`) formats.
-
-## Type Safety (v0.2.0+)
-
-`wires` leverages Rust's type system for reliability:
-
-- **WireId newtype**: Prevents mixing wire IDs with arbitrary strings, validates 7-character hex format
-- **Status/Format enums**: Compile-time validation of CLI arguments via clap's `ValueEnum`
-- **WireError enum**: Pattern-matchable domain errors (NotARepository, WireNotFound, CircularDependency, AlreadyInitialized)
-- **Wire::new() constructor**: Validates non-empty titles, handles ID generation and timestamps
-
-These improvements eliminate entire classes of runtime errors and provide better error messages when things go wrong.
 
 ## License
 

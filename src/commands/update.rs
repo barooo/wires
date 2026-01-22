@@ -12,7 +12,14 @@ pub fn run(
 ) -> Result<()> {
     let conn = db::open()?;
 
-    db::update_wire(&conn, wire_id, title, description.map(Some), status, priority)?;
+    db::update_wire(
+        &conn,
+        wire_id,
+        title,
+        description.map(Some),
+        status,
+        priority,
+    )?;
 
     // Fetch updated wire
     let wire = db::get_wire_with_deps(&conn, wire_id)

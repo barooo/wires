@@ -299,7 +299,9 @@ impl Wire {
         Ok(Wire {
             id: crate::generate_id(title),
             title: title.to_string(),
-            description: description.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+            description: description
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
             status: Status::Todo,
             created_at: now,
             updated_at: now,
