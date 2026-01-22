@@ -31,11 +31,17 @@ enum Commands {
         /// Filter by status
         #[arg(short, long)]
         status: Option<String>,
+        /// Output format (json, table). Auto-detects based on TTY.
+        #[arg(short, long)]
+        format: Option<String>,
     },
     /// Show wire details
     Show {
         /// Wire ID
         id: String,
+        /// Output format (json, table). Auto-detects based on TTY.
+        #[arg(short, long)]
+        format: Option<String>,
     },
     /// Update wire fields
     Update {
@@ -84,7 +90,11 @@ enum Commands {
         depends_on: String,
     },
     /// Find wires ready to work on
-    Ready,
+    Ready {
+        /// Output format (json, table). Auto-detects based on TTY.
+        #[arg(short, long)]
+        format: Option<String>,
+    },
     /// Delete a wire and its dependencies
     Rm {
         /// Wire ID
@@ -108,8 +118,10 @@ fn main() {
             description,
             priority,
         } => commands::new::run(&title, description.as_deref(), priority),
-        Commands::List { status } => commands::list::run(status.as_deref()),
-        Commands::Show { id } => commands::show::run(&id),
+        Commands::List { status, format } => {
+            commands::list::run(status.as_deref(), format.as_deref())
+        }
+        Commands::Show { id, format } => commands::show::run(&id, format.as_deref()),
         Commands::Update {
             id,
             title,
@@ -134,7 +146,7 @@ fn main() {
             wire_id,
             depends_on,
         } => commands::undep::run(&wire_id, &depends_on),
-        Commands::Ready => commands::ready::run(),
+        Commands::Ready { format } => commands::ready::run(format.as_deref()),
         Commands::Rm { id } => commands::rm::run(&id),
         Commands::Graph { format } => commands::graph::run(Some(&format)),
     };

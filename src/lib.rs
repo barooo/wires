@@ -1,4 +1,5 @@
 pub mod db;
+pub mod format;
 pub mod models;
 
 use sha2::{Digest, Sha256};

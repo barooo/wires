@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use serde::Serialize;
 use wr::db;
 
@@ -22,7 +22,19 @@ struct Graph {
     edges: Vec<GraphEdge>,
 }
 
-pub fn run(_format: Option<&str>) -> Result<()> {
+pub fn run(format: Option<&str>) -> Result<()> {
+    // Graph only supports json and dot formats
+    match format {
+        Some("json") | None => {}
+        Some("dot") => return Err(anyhow!("dot format not yet implemented")),
+        Some("table") => {
+            return Err(anyhow!(
+                "graph does not support table format. Use: json, dot"
+            ))
+        }
+        Some(other) => return Err(anyhow!("Invalid format: {}. Valid: json, dot", other)),
+    }
+
     let conn = db::open()?;
 
     // Get all wires as nodes

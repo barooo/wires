@@ -1,12 +1,19 @@
-use anyhow::Result;
-use wr::db;
+use anyhow::{anyhow, Result};
+use wr::{
+    db,
+    format::{format_wire_table, print_json, Format},
+};
 
-pub fn run() -> Result<()> {
+pub fn run(format_str: Option<&str>) -> Result<()> {
+    let format = Format::from_str_or_auto(format_str).map_err(|e| anyhow!(e))?;
+
     let conn = db::open()?;
     let wires = db::get_ready_wires(&conn)?;
 
-    let output = serde_json::to_string(&wires)?;
-    println!("{}", output);
+    match format {
+        Format::Json => print_json(&wires)?,
+        Format::Table => print!("{}", format_wire_table(&wires)),
+    }
 
     Ok(())
 }
