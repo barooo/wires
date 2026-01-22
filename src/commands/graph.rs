@@ -23,18 +23,6 @@ struct Graph {
 }
 
 pub fn run(format: Option<&str>) -> Result<()> {
-    // Graph only supports json and dot formats
-    match format {
-        Some("json") | None => {}
-        Some("dot") => return Err(anyhow!("dot format not yet implemented")),
-        Some("table") => {
-            return Err(anyhow!(
-                "graph does not support table format. Use: json, dot"
-            ))
-        }
-        Some(other) => return Err(anyhow!("Invalid format: {}. Valid: json, dot", other)),
-    }
-
     let conn = db::open()?;
 
     // Get all wires as nodes
@@ -62,6 +50,37 @@ pub fn run(format: Option<&str>) -> Result<()> {
 
     let graph = Graph { nodes, edges };
 
-    println!("{}", serde_json::to_string(&graph)?);
+    match format {
+        Some("dot") => print_dot(&graph),
+        Some("json") | None => println!("{}", serde_json::to_string(&graph)?),
+        Some("table") => {
+            return Err(anyhow!(
+                "graph does not support table format. Use: json, dot"
+            ))
+        }
+        Some(other) => return Err(anyhow!("Invalid format: {}. Valid: json, dot", other)),
+    }
+
     Ok(())
+}
+
+fn print_dot(graph: &Graph) {
+    println!("digraph wires {{");
+    println!("    rankdir=LR;");
+    println!("    node [shape=box];");
+
+    for node in &graph.nodes {
+        // Escape quotes in title for DOT format
+        let escaped_title = node.title.replace('"', "\\\"");
+        println!(
+            "    \"{}\" [label=\"{}\\n{}\"];",
+            node.id, escaped_title, node.status
+        );
+    }
+
+    for edge in &graph.edges {
+        println!("    \"{}\" -> \"{}\";", edge.from, edge.to);
+    }
+
+    println!("}}");
 }

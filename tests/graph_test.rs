@@ -161,3 +161,84 @@ fn test_graph_format_json_explicit() {
     assert!(json.get("nodes").is_some());
     assert!(json.get("edges").is_some());
 }
+
+#[test]
+fn test_graph_format_dot_empty() {
+    let temp_dir = TempDir::new().unwrap();
+    init_test_repo(&temp_dir);
+
+    let output = Command::cargo_bin("wr")
+        .unwrap()
+        .current_dir(&temp_dir)
+        .arg("graph")
+        .arg("--format")
+        .arg("dot")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("digraph wires {"));
+    assert!(stdout.contains("}"));
+}
+
+#[test]
+fn test_graph_format_dot_with_nodes() {
+    let temp_dir = TempDir::new().unwrap();
+    init_test_repo(&temp_dir);
+
+    let wire_a = create_wire(&temp_dir, "Wire A");
+
+    let output = Command::cargo_bin("wr")
+        .unwrap()
+        .current_dir(&temp_dir)
+        .arg("graph")
+        .arg("--format")
+        .arg("dot")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("digraph wires {"));
+    // Node should be defined with its ID and label
+    assert!(stdout.contains(&wire_a));
+    assert!(stdout.contains("Wire A"));
+    assert!(stdout.contains("TODO"));
+}
+
+#[test]
+fn test_graph_format_dot_with_edges() {
+    let temp_dir = TempDir::new().unwrap();
+    init_test_repo(&temp_dir);
+
+    let wire_a = create_wire(&temp_dir, "Wire A");
+    let wire_b = create_wire(&temp_dir, "Wire B");
+
+    // A depends on B
+    Command::cargo_bin("wr")
+        .unwrap()
+        .current_dir(&temp_dir)
+        .arg("dep")
+        .arg(&wire_a)
+        .arg(&wire_b)
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("wr")
+        .unwrap()
+        .current_dir(&temp_dir)
+        .arg("graph")
+        .arg("--format")
+        .arg("dot")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should have an edge from A to B (A depends on B)
+    assert!(stdout.contains("->"));
+}
