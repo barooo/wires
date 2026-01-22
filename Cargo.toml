@@ -1,6 +1,6 @@
 [package]
 name = "wr"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "Lightweight local task tracker optimized for AI coding agents"
 license = "MIT"
