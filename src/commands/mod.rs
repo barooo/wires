@@ -5,6 +5,7 @@ pub mod init;
 pub mod list;
 pub mod new;
 pub mod ready;
+pub mod rm;
 pub mod show;
 pub mod start;
 pub mod undep;

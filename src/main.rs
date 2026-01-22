@@ -85,6 +85,11 @@ enum Commands {
     },
     /// Find wires ready to work on
     Ready,
+    /// Delete a wire and its dependencies
+    Rm {
+        /// Wire ID
+        id: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -124,5 +129,6 @@ fn main() -> Result<()> {
             depends_on,
         } => commands::undep::run(&wire_id, &depends_on),
         Commands::Ready => commands::ready::run(),
+        Commands::Rm { id } => commands::rm::run(&id),
     }
 }

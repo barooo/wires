@@ -33,7 +33,11 @@ fn create_wire_with_priority(dir: &TempDir, title: &str, priority: i32) -> Strin
         .output()
         .unwrap();
 
-    assert!(output.status.success(), "wr new failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "wr new failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     json["id"].as_str().unwrap().to_string()
@@ -210,9 +214,7 @@ fn test_ready_excludes_wires_with_incomplete_dependencies() {
     // blocked_wire has incomplete dependency
     assert_eq!(wires.len(), 2);
 
-    let ids: Vec<&str> = wires.iter()
-        .map(|w| w["id"].as_str().unwrap())
-        .collect();
+    let ids: Vec<&str> = wires.iter().map(|w| w["id"].as_str().unwrap()).collect();
 
     assert!(ids.contains(&ready_wire.as_str()));
     assert!(ids.contains(&dep_wire.as_str()));
