@@ -99,6 +99,139 @@ pub fn open() -> Result<Connection> {
     Connection::open(db_path).context("Failed to open database")
 }
 
+/// Insert a new wire into the database
+pub fn insert_wire(conn: &Connection, wire: &crate::models::Wire) -> Result<()> {
+    conn.execute(
+        "INSERT INTO wires (id, title, description, status, created_at, updated_at, priority)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        [
+            &wire.id,
+            &wire.title,
+            wire.description.as_deref().unwrap_or(""),
+            wire.status.as_str(),
+            &wire.created_at.to_string(),
+            &wire.updated_at.to_string(),
+            &wire.priority.to_string(),
+        ],
+    )?;
+    Ok(())
+}
+
+/// List wires, optionally filtered by status
+pub fn list_wires(
+    conn: &Connection,
+    status_filter: Option<&str>,
+) -> Result<Vec<crate::models::Wire>> {
+    use crate::models::{Status, Wire};
+    use std::str::FromStr;
+
+    let mut query = String::from(
+        "SELECT id, title, description, status, created_at, updated_at, priority FROM wires",
+    );
+
+    if let Some(status) = status_filter {
+        query.push_str(&format!(" WHERE status = '{}'", status));
+    }
+
+    query.push_str(" ORDER BY created_at DESC");
+
+    let mut stmt = conn.prepare(&query)?;
+    let wires = stmt.query_map([], |row| {
+        let description: Option<String> = row.get(2)?;
+        let description = description.filter(|s| !s.is_empty());
+
+        Ok(Wire {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            description,
+            status: Status::from_str(row.get::<_, String>(3)?.as_str())
+                .map_err(|_| rusqlite::Error::InvalidQuery)?,
+            created_at: row.get(4)?,
+            updated_at: row.get(5)?,
+            priority: row.get(6)?,
+        })
+    })?;
+
+    let mut result = Vec::new();
+    for wire in wires {
+        result.push(wire?);
+    }
+
+    Ok(result)
+}
+
+/// Get a wire with its dependency information
+pub fn get_wire_with_deps(conn: &Connection, wire_id: &str) -> Result<crate::models::WireWithDeps> {
+    use crate::models::{DependencyInfo, Status, Wire, WireWithDeps};
+    use std::str::FromStr;
+
+    // Get the wire
+    let mut stmt = conn.prepare(
+        "SELECT id, title, description, status, created_at, updated_at, priority
+         FROM wires WHERE id = ?1",
+    )?;
+
+    let wire = stmt.query_row([wire_id], |row| {
+        let description: Option<String> = row.get(2)?;
+        let description = description.filter(|s| !s.is_empty());
+
+        Ok(Wire {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            description,
+            status: Status::from_str(row.get::<_, String>(3)?.as_str())
+                .map_err(|_| rusqlite::Error::InvalidQuery)?,
+            created_at: row.get(4)?,
+            updated_at: row.get(5)?,
+            priority: row.get(6)?,
+        })
+    })?;
+
+    // Get dependencies (wires this wire depends on)
+    let mut stmt = conn.prepare(
+        "SELECT w.id, w.title, w.status
+         FROM wires w
+         JOIN dependencies d ON w.id = d.depends_on
+         WHERE d.wire_id = ?1",
+    )?;
+
+    let depends_on = stmt
+        .query_map([wire_id], |row| {
+            Ok(DependencyInfo {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                status: Status::from_str(row.get::<_, String>(2)?.as_str())
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Get blockers (wires that depend on this wire)
+    let mut stmt = conn.prepare(
+        "SELECT w.id, w.title, w.status
+         FROM wires w
+         JOIN dependencies d ON w.id = d.wire_id
+         WHERE d.depends_on = ?1",
+    )?;
+
+    let blocks = stmt
+        .query_map([wire_id], |row| {
+            Ok(DependencyInfo {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                status: Status::from_str(row.get::<_, String>(2)?.as_str())
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(WireWithDeps {
+        wire,
+        depends_on,
+        blocks,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
