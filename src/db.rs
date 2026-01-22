@@ -1,3 +1,14 @@
+//! Database operations for wires.
+//!
+//! This module handles all SQLite database operations including:
+//! - Initialization and schema creation
+//! - Wire CRUD operations
+//! - Dependency management with circular dependency detection
+//! - Finding ready-to-work wires
+//!
+//! The database is stored in `.wires/wires.db` and uses WAL mode for
+//! concurrent access support.
+
 use anyhow::{anyhow, Context, Result};
 use rusqlite::Connection;
 use std::fs;
@@ -6,7 +17,30 @@ use std::path::{Path, PathBuf};
 const WIRES_DIR: &str = ".wires";
 const DB_NAME: &str = "wires.db";
 
-/// Initialize a new wires database in the current directory
+/// Initializes a new wires database in the specified directory.
+///
+/// Creates a `.wires/` directory containing a SQLite database with
+/// the required schema (wires and dependencies tables).
+///
+/// # Arguments
+///
+/// * `path` - The directory where `.wires/` should be created
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The `.wires/` directory already exists
+/// - Directory creation fails
+/// - Database creation fails
+///
+/// # Example
+///
+/// ```no_run
+/// use std::path::Path;
+/// use wr::db;
+///
+/// db::init(Path::new("/path/to/project")).expect("Failed to initialize");
+/// ```
 pub fn init(path: &Path) -> Result<()> {
     let wires_dir = path.join(WIRES_DIR);
 
@@ -67,7 +101,14 @@ fn create_schema(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Find the wires database by searching up the directory tree (git-style)
+/// Finds the wires database by searching up the directory tree.
+///
+/// Like git, this searches from the current directory upward until it
+/// finds a `.wires/` directory containing the database.
+///
+/// # Errors
+///
+/// Returns an error if no `.wires/` directory is found in any parent directory.
 pub fn find_db() -> Result<PathBuf> {
     let current_dir = std::env::current_dir().context("Failed to get current directory")?;
 
@@ -93,13 +134,36 @@ fn find_db_from(start: &Path) -> Result<PathBuf> {
     }
 }
 
-/// Open a connection to the wires database
+/// Opens a connection to the wires database.
+///
+/// Searches for the database using [`find_db`], then opens a connection to it.
+///
+/// # Errors
+///
+/// Returns an error if no database is found or the connection fails.
+///
+/// # Example
+///
+/// ```no_run
+/// use wr::db;
+///
+/// let conn = db::open().expect("Not in a wires repository");
+/// ```
 pub fn open() -> Result<Connection> {
     let db_path = find_db()?;
     Connection::open(db_path).context("Failed to open database")
 }
 
-/// Insert a new wire into the database
+/// Inserts a new wire into the database.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `wire` - The wire to insert
+///
+/// # Errors
+///
+/// Returns an error if the insert fails (e.g., duplicate ID).
 pub fn insert_wire(conn: &Connection, wire: &crate::models::Wire) -> Result<()> {
     conn.execute(
         "INSERT INTO wires (id, title, description, status, created_at, updated_at, priority)
@@ -117,7 +181,19 @@ pub fn insert_wire(conn: &Connection, wire: &crate::models::Wire) -> Result<()> 
     Ok(())
 }
 
-/// Update a wire's fields
+/// Updates one or more fields of a wire.
+///
+/// Only fields with `Some` values are updated. The `updated_at` timestamp
+/// is automatically set to the current time.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `wire_id` - ID of the wire to update
+/// * `title` - New title, if changing
+/// * `description` - New description (`Some(Some("desc"))` to set, `Some(None)` to clear)
+/// * `status` - New status string (e.g., "TODO", "IN_PROGRESS")
+/// * `priority` - New priority value
 pub fn update_wire(
     conn: &Connection,
     wire_id: &str,
@@ -190,7 +266,18 @@ pub fn update_wire(
     Ok(())
 }
 
-/// Check for incomplete dependencies of a wire
+/// Checks for incomplete dependencies of a wire.
+///
+/// Returns a list of wires that this wire depends on which are not yet `DONE`.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `wire_id` - ID of the wire to check
+///
+/// # Returns
+///
+/// A vector of [`DependencyInfo`](crate::models::DependencyInfo) for each incomplete dependency.
 pub fn check_incomplete_dependencies(
     conn: &Connection,
     wire_id: &str,
@@ -239,7 +326,16 @@ fn wire_from_row(row: &rusqlite::Row) -> rusqlite::Result<crate::models::Wire> {
     })
 }
 
-/// List wires, optionally filtered by status
+/// Lists wires, optionally filtered by status.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `status_filter` - Optional status to filter by (e.g., "TODO", "IN_PROGRESS")
+///
+/// # Returns
+///
+/// A vector of wires ordered by creation date (newest first).
 pub fn list_wires(
     conn: &Connection,
     status_filter: Option<&str>,
@@ -265,7 +361,18 @@ pub fn list_wires(
     }
 }
 
-/// Get a wire with its dependency information
+/// Gets a wire with its full dependency information.
+///
+/// Returns the wire along with lists of wires it depends on and wires that depend on it.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `wire_id` - ID of the wire to fetch
+///
+/// # Errors
+///
+/// Returns an error if the wire is not found.
 pub fn get_wire_with_deps(conn: &Connection, wire_id: &str) -> Result<crate::models::WireWithDeps> {
     use crate::models::{DependencyInfo, Status, WireWithDeps};
     use std::str::FromStr;
@@ -389,7 +496,22 @@ fn would_create_cycle(
     Ok(None)
 }
 
-/// Add a dependency between two wires
+/// Adds a dependency between two wires.
+///
+/// Creates a dependency where `wire_id` depends on `depends_on`, meaning
+/// `depends_on` must be completed before `wire_id` is ready to work on.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `wire_id` - The wire that has the dependency
+/// * `depends_on` - The wire it depends on
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Either wire does not exist
+/// - The dependency would create a circular dependency
 pub fn add_dependency(conn: &Connection, wire_id: &str, depends_on: &str) -> Result<()> {
     // Check if both wires exist
     let wire_exists: i64 = conn.query_row(
@@ -429,7 +551,13 @@ pub fn add_dependency(conn: &Connection, wire_id: &str, depends_on: &str) -> Res
     Ok(())
 }
 
-/// Remove a dependency between two wires
+/// Removes a dependency between two wires.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `wire_id` - The wire that has the dependency
+/// * `depends_on` - The wire it depends on
 pub fn remove_dependency(conn: &Connection, wire_id: &str, depends_on: &str) -> Result<()> {
     conn.execute(
         "DELETE FROM dependencies WHERE wire_id = ?1 AND depends_on = ?2",
@@ -439,8 +567,30 @@ pub fn remove_dependency(conn: &Connection, wire_id: &str, depends_on: &str) -> 
     Ok(())
 }
 
-/// Get wires that are ready to work on (no incomplete dependencies)
-/// Returns wires sorted by: IN_PROGRESS first, then TODO, then by priority (descending)
+/// Gets wires that are ready to work on.
+///
+/// A wire is ready if:
+/// - Its status is `TODO` or `IN_PROGRESS`
+/// - All wires it depends on have status `DONE`
+///
+/// Results are sorted by:
+/// 1. Status (`IN_PROGRESS` first, then `TODO`)
+/// 2. Priority (higher priority first)
+///
+/// This is the primary function for AI agents to determine what to work on next.
+///
+/// # Example
+///
+/// ```no_run
+/// use wr::db;
+///
+/// let conn = db::open().expect("Failed to open database");
+/// let ready = db::get_ready_wires(&conn).expect("Failed to get ready wires");
+///
+/// if let Some(next) = ready.first() {
+///     println!("Next task: {} - {}", next.id, next.title);
+/// }
+/// ```
 pub fn get_ready_wires(conn: &Connection) -> Result<Vec<crate::models::Wire>> {
     let query = "
         SELECT w.id, w.title, w.description, w.status, w.created_at, w.updated_at, w.priority

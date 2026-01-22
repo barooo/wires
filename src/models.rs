@@ -1,7 +1,25 @@
+//! Data models for wires.
+//!
+//! This module contains the core data structures used throughout the application:
+//! - [`Status`] - Task status enum (TODO, IN_PROGRESS, DONE, CANCELLED)
+//! - [`Wire`] - A task/item with title, description, status, and priority
+//! - [`WireWithDeps`] - A wire with its dependency relationships
+//! - [`DependencyInfo`] - Summary info about a dependent wire
+
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-/// Wire status values
+/// Task status values.
+///
+/// Wires progress through these states:
+/// - `Todo` - Not yet started
+/// - `InProgress` - Currently being worked on
+/// - `Done` - Completed successfully
+/// - `Cancelled` - Abandoned or no longer needed
+///
+/// # Serialization
+///
+/// Statuses serialize as uppercase strings: `"TODO"`, `"IN_PROGRESS"`, `"DONE"`, `"CANCELLED"`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Status {
     #[serde(rename = "TODO")]
@@ -15,6 +33,14 @@ pub enum Status {
 }
 
 impl Status {
+    /// Returns the string representation of the status.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use wr::models::Status;
+    /// assert_eq!(Status::InProgress.as_str(), "IN_PROGRESS");
+    /// ```
     pub fn as_str(&self) -> &str {
         match self {
             Status::Todo => "TODO",
@@ -39,40 +65,72 @@ impl FromStr for Status {
     }
 }
 
-/// A wire (task/item)
+/// A wire (task/item) in the tracker.
+///
+/// Wires are the fundamental unit of work tracking. Each wire has:
+/// - A unique 7-character hex ID
+/// - A title describing the task
+/// - An optional detailed description
+/// - A status indicating progress
+/// - Timestamps for creation and last update
+/// - A priority for ordering (higher = more important)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Wire {
+    /// Unique 7-character hexadecimal identifier
     pub id: String,
+    /// Short description of the task
     pub title: String,
+    /// Optional detailed description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Current status of the wire
     pub status: Status,
+    /// Unix timestamp when the wire was created
     pub created_at: i64,
+    /// Unix timestamp when the wire was last updated
     pub updated_at: i64,
+    /// Priority level (higher values = higher priority)
     pub priority: i32,
 }
 
-/// Wire with dependency information
+/// A wire with its full dependency information.
+///
+/// This struct includes the wire itself plus lists of:
+/// - Wires this wire depends on (must complete before this one)
+/// - Wires that depend on this wire (blocked until this completes)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WireWithDeps {
+    /// The wire itself (fields are flattened in JSON)
     #[serde(flatten)]
     pub wire: Wire,
+    /// Wires this wire depends on
     pub depends_on: Vec<DependencyInfo>,
+    /// Wires that are blocked by this wire
     pub blocks: Vec<DependencyInfo>,
 }
 
-/// Dependency information for display
+/// Summary information about a wire in a dependency relationship.
+///
+/// Used to display dependency information without loading full wire details.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DependencyInfo {
+    /// Wire ID
     pub id: String,
+    /// Wire title
     pub title: String,
+    /// Current status
     pub status: Status,
 }
 
-/// A dependency relationship
+/// A dependency relationship between two wires.
+///
+/// Represents that `wire_id` depends on `depends_on`, meaning
+/// `depends_on` must be completed before `wire_id` is ready to work on.
 #[derive(Debug, Clone)]
 pub struct Dependency {
+    /// The wire that has the dependency
     pub wire_id: String,
+    /// The wire it depends on
     pub depends_on: String,
 }
 
