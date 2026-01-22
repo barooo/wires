@@ -117,6 +117,108 @@ pub fn insert_wire(conn: &Connection, wire: &crate::models::Wire) -> Result<()> 
     Ok(())
 }
 
+/// Update a wire's fields
+pub fn update_wire(
+    conn: &Connection,
+    wire_id: &str,
+    title: Option<&str>,
+    description: Option<Option<&str>>,
+    status: Option<&str>,
+    priority: Option<i32>,
+) -> Result<()> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64;
+
+    let mut query_parts = Vec::new();
+
+    if title.is_some() {
+        query_parts.push("title = ?");
+    }
+
+    if description.is_some() {
+        query_parts.push("description = ?");
+    }
+
+    if status.is_some() {
+        query_parts.push("status = ?");
+    }
+
+    if priority.is_some() {
+        query_parts.push("priority = ?");
+    }
+
+    if query_parts.is_empty() {
+        return Ok(());
+    }
+
+    query_parts.push("updated_at = ?");
+
+    let query = format!("UPDATE wires SET {} WHERE id = ?", query_parts.join(", "));
+
+    // Build params dynamically
+    let mut stmt = conn.prepare(&query)?;
+    let mut param_index = 1;
+
+    if let Some(t) = title {
+        stmt.raw_bind_parameter(param_index, t)?;
+        param_index += 1;
+    }
+
+    if let Some(d) = description {
+        stmt.raw_bind_parameter(param_index, d.unwrap_or(""))?;
+        param_index += 1;
+    }
+
+    if let Some(s) = status {
+        stmt.raw_bind_parameter(param_index, s)?;
+        param_index += 1;
+    }
+
+    if let Some(p) = priority {
+        stmt.raw_bind_parameter(param_index, p)?;
+        param_index += 1;
+    }
+
+    stmt.raw_bind_parameter(param_index, now)?;
+    param_index += 1;
+
+    stmt.raw_bind_parameter(param_index, wire_id)?;
+
+    stmt.raw_execute()?;
+
+    Ok(())
+}
+
+/// Check for incomplete dependencies of a wire
+pub fn check_incomplete_dependencies(
+    conn: &Connection,
+    wire_id: &str,
+) -> Result<Vec<crate::models::DependencyInfo>> {
+    use crate::models::{DependencyInfo, Status};
+    use std::str::FromStr;
+
+    let mut stmt = conn.prepare(
+        "SELECT w.id, w.title, w.status
+         FROM wires w
+         JOIN dependencies d ON w.id = d.depends_on
+         WHERE d.wire_id = ?1 AND w.status != 'DONE'",
+    )?;
+
+    let deps = stmt
+        .query_map([wire_id], |row| {
+            Ok(DependencyInfo {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                status: Status::from_str(row.get::<_, String>(2)?.as_str())
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(deps)
+}
+
 /// List wires, optionally filtered by status
 pub fn list_wires(
     conn: &Connection,

@@ -37,6 +37,38 @@ enum Commands {
         /// Wire ID
         id: String,
     },
+    /// Update wire fields
+    Update {
+        /// Wire ID
+        id: String,
+        /// New title
+        #[arg(long)]
+        title: Option<String>,
+        /// New description
+        #[arg(long)]
+        description: Option<String>,
+        /// New status
+        #[arg(long)]
+        status: Option<String>,
+        /// New priority
+        #[arg(long)]
+        priority: Option<i32>,
+    },
+    /// Set wire status to IN_PROGRESS
+    Start {
+        /// Wire ID
+        id: String,
+    },
+    /// Set wire status to DONE
+    Done {
+        /// Wire ID
+        id: String,
+    },
+    /// Set wire status to CANCELLED
+    Cancel {
+        /// Wire ID
+        id: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -51,5 +83,21 @@ fn main() -> Result<()> {
         } => commands::new::run(&title, description.as_deref(), priority),
         Commands::List { status } => commands::list::run(status.as_deref()),
         Commands::Show { id } => commands::show::run(&id),
+        Commands::Update {
+            id,
+            title,
+            description,
+            status,
+            priority,
+        } => commands::update::run(
+            &id,
+            title.as_deref(),
+            description.as_deref(),
+            status.as_deref(),
+            priority,
+        ),
+        Commands::Start { id } => commands::start::run(&id),
+        Commands::Done { id } => commands::done::run(&id),
+        Commands::Cancel { id } => commands::cancel::run(&id),
     }
 }
