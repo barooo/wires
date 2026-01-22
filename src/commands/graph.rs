@@ -1,10 +1,11 @@
 use anyhow::{anyhow, Result};
 use serde::Serialize;
 use wr::db;
+use wr::models::WireId;
 
 #[derive(Serialize)]
 struct GraphNode {
-    id: String,
+    id: WireId,
     title: String,
     status: String,
     priority: i32,
@@ -12,8 +13,8 @@ struct GraphNode {
 
 #[derive(Serialize)]
 struct GraphEdge {
-    from: String,
-    to: String,
+    from: WireId,
+    to: WireId,
 }
 
 #[derive(Serialize)]
@@ -74,12 +75,18 @@ fn print_dot(graph: &Graph) {
         let escaped_title = node.title.replace('"', "\\\"");
         println!(
             "    \"{}\" [label=\"{}\\n{}\"];",
-            node.id, escaped_title, node.status
+            node.id.as_str(),
+            escaped_title,
+            node.status
         );
     }
 
     for edge in &graph.edges {
-        println!("    \"{}\" -> \"{}\";", edge.from, edge.to);
+        println!(
+            "    \"{}\" -> \"{}\";",
+            edge.from.as_str(),
+            edge.to.as_str()
+        );
     }
 
     println!("}}");

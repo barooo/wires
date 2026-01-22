@@ -1,13 +1,136 @@
 //! Data models for wires.
 //!
 //! This module contains the core data structures used throughout the application:
+//! - [`WireId`] - A validated 7-character hexadecimal wire identifier
 //! - [`Status`] - Task status enum (TODO, IN_PROGRESS, DONE, CANCELLED)
 //! - [`Wire`] - A task/item with title, description, status, and priority
 //! - [`WireWithDeps`] - A wire with its dependency relationships
 //! - [`DependencyInfo`] - Summary info about a dependent wire
 
+use rusqlite::types::{FromSql, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::str::FromStr;
+
+/// A validated 7-character hexadecimal wire identifier.
+///
+/// Wire IDs are generated from a hash of the title and timestamp,
+/// providing uniqueness while being short enough for human use.
+///
+/// # Validation
+///
+/// A valid WireId must be exactly 7 lowercase hexadecimal characters (0-9, a-f).
+///
+/// # Example
+///
+/// ```
+/// use wr::models::WireId;
+///
+/// let id = WireId::new("a1b2c3d").unwrap();
+/// assert_eq!(id.as_str(), "a1b2c3d");
+///
+/// // Invalid IDs are rejected
+/// assert!(WireId::new("too_long_id").is_err());
+/// assert!(WireId::new("abc").is_err());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct WireId(String);
+
+impl WireId {
+    /// Creates a new WireId from a string, validating the format.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the string is not exactly 7 lowercase hex characters.
+    pub fn new(s: &str) -> Result<Self, WireIdError> {
+        if s.len() != 7 {
+            return Err(WireIdError::InvalidLength(s.len()));
+        }
+        if !s.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(WireIdError::InvalidCharacters);
+        }
+        Ok(WireId(s.to_lowercase()))
+    }
+
+    /// Creates a WireId without validation.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the string is a valid 7-character hex string.
+    /// This is intended for use when reading from the database where data
+    /// is known to be valid.
+    pub(crate) fn from_trusted(s: String) -> Self {
+        WireId(s)
+    }
+
+    /// Returns the ID as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for WireId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Serialize for WireId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for WireId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        WireId::new(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Error type for invalid wire IDs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WireIdError {
+    /// ID is not exactly 7 characters
+    InvalidLength(usize),
+    /// ID contains non-hexadecimal characters
+    InvalidCharacters,
+}
+
+impl fmt::Display for WireIdError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            WireIdError::InvalidLength(len) => {
+                write!(f, "Wire ID must be 7 characters, got {}", len)
+            }
+            WireIdError::InvalidCharacters => {
+                write!(f, "Wire ID must contain only hexadecimal characters")
+            }
+        }
+    }
+}
+
+impl std::error::Error for WireIdError {}
+
+impl FromSql for WireId {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        let s = value.as_str()?;
+        // Trust database values are valid (we wrote them)
+        Ok(WireId::from_trusted(s.to_string()))
+    }
+}
+
+impl ToSql for WireId {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(ToSqlOutput::Borrowed(ValueRef::Text(self.0.as_bytes())))
+    }
+}
 
 /// Task status values.
 ///
@@ -77,7 +200,7 @@ impl FromStr for Status {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Wire {
     /// Unique 7-character hexadecimal identifier
-    pub id: String,
+    pub id: WireId,
     /// Short description of the task
     pub title: String,
     /// Optional detailed description
@@ -115,7 +238,7 @@ pub struct WireWithDeps {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DependencyInfo {
     /// Wire ID
-    pub id: String,
+    pub id: WireId,
     /// Wire title
     pub title: String,
     /// Current status
@@ -129,14 +252,41 @@ pub struct DependencyInfo {
 #[derive(Debug, Clone)]
 pub struct Dependency {
     /// The wire that has the dependency
-    pub wire_id: String,
+    pub wire_id: WireId,
     /// The wire it depends on
-    pub depends_on: String,
+    pub depends_on: WireId,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_wire_id_valid() {
+        let id = WireId::new("a1b2c3d").unwrap();
+        assert_eq!(id.as_str(), "a1b2c3d");
+    }
+
+    #[test]
+    fn test_wire_id_wrong_length() {
+        assert!(WireId::new("abc").is_err());
+        assert!(WireId::new("a1b2c3d4").is_err());
+    }
+
+    #[test]
+    fn test_wire_id_non_hex() {
+        assert!(WireId::new("a1b2c3g").is_err()); // 'g' is not hex
+    }
+
+    #[test]
+    fn test_wire_id_serialization() {
+        let id = WireId::new("a1b2c3d").unwrap();
+        let json = serde_json::to_string(&id).unwrap();
+        assert_eq!(json, r#""a1b2c3d""#);
+
+        let parsed: WireId = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, id);
+    }
 
     #[test]
     fn test_status_as_str() {
@@ -168,7 +318,7 @@ mod tests {
     #[test]
     fn test_wire_serialization() {
         let wire = Wire {
-            id: "a3f2c1b".to_string(),
+            id: WireId::new("a3f2c1b").unwrap(),
             title: "Test wire".to_string(),
             description: Some("Test description".to_string()),
             status: Status::Todo,
@@ -185,7 +335,7 @@ mod tests {
     #[test]
     fn test_wire_serialization_without_description() {
         let wire = Wire {
-            id: "a3f2c1b".to_string(),
+            id: WireId::new("a3f2c1b").unwrap(),
             title: "Test wire".to_string(),
             description: None,
             status: Status::Todo,

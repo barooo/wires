@@ -39,10 +39,11 @@ pub mod db;
 pub mod format;
 pub mod models;
 
+use models::WireId;
 use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Generates a unique 7-character hexadecimal ID from a title.
+/// Generates a unique [`WireId`] from a title.
 ///
 /// The ID is derived from a SHA-256 hash of the title combined with
 /// the current timestamp in nanoseconds, ensuring uniqueness even
@@ -54,16 +55,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 ///
 /// # Returns
 ///
-/// A 7-character lowercase hexadecimal string
+/// A validated [`WireId`]
 ///
 /// # Example
 ///
 /// ```
 /// let id = wr::generate_id("Implement feature X");
-/// assert_eq!(id.len(), 7);
-/// assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
+/// assert_eq!(id.as_str().len(), 7);
 /// ```
-pub fn generate_id(title: &str) -> String {
+pub fn generate_id(title: &str) -> WireId {
     let timestamp_nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards")
@@ -73,7 +73,8 @@ pub fn generate_id(title: &str) -> String {
     let hash = Sha256::digest(input.as_bytes());
     let hex = format!("{:x}", hash);
 
-    hex[..7].to_string()
+    // Safe: SHA-256 hex output is always valid hex characters
+    WireId::from_trusted(hex[..7].to_string())
 }
 
 #[cfg(test)]
@@ -83,7 +84,7 @@ mod tests {
     #[test]
     fn test_generate_id_length() {
         let id = generate_id("Test wire");
-        assert_eq!(id.len(), 7);
+        assert_eq!(id.as_str().len(), 7);
     }
 
     #[test]
@@ -97,6 +98,6 @@ mod tests {
     #[test]
     fn test_generate_id_hex_characters() {
         let id = generate_id("Test wire");
-        assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(id.as_str().chars().all(|c| c.is_ascii_hexdigit()));
     }
 }

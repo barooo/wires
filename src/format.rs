@@ -79,7 +79,7 @@ pub fn format_wire_table(wires: &[crate::models::Wire]) -> String {
     for wire in wires {
         output.push_str(&format!(
             "{:<8} {:<12} {:>3}  {}\n",
-            &wire.id[..7.min(wire.id.len())],
+            wire.id.as_str(),
             wire.status.as_str(),
             wire.priority,
             truncate(&wire.title, 40)
@@ -109,7 +109,7 @@ pub fn format_wire_detail_table(wire: &crate::models::WireWithDeps) -> String {
         for dep in &wire.depends_on {
             output.push_str(&format!(
                 "  {} ({}) - {}\n",
-                &dep.id[..7.min(dep.id.len())],
+                dep.id.as_str(),
                 dep.status.as_str(),
                 dep.title
             ));
@@ -121,7 +121,7 @@ pub fn format_wire_detail_table(wire: &crate::models::WireWithDeps) -> String {
         for blocker in &wire.blocks {
             output.push_str(&format!(
                 "  {} ({}) - {}\n",
-                &blocker.id[..7.min(blocker.id.len())],
+                blocker.id.as_str(),
                 blocker.status.as_str(),
                 blocker.title
             ));

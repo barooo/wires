@@ -168,14 +168,14 @@ pub fn insert_wire(conn: &Connection, wire: &crate::models::Wire) -> Result<()> 
     conn.execute(
         "INSERT INTO wires (id, title, description, status, created_at, updated_at, priority)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        [
+        rusqlite::params![
             &wire.id,
             &wire.title,
             wire.description.as_deref().unwrap_or(""),
             wire.status.as_str(),
-            &wire.created_at.to_string(),
-            &wire.updated_at.to_string(),
-            &wire.priority.to_string(),
+            wire.created_at,
+            wire.updated_at,
+            wire.priority,
         ],
     )?;
     Ok(())
