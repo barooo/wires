@@ -1,11 +1,11 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use wr::{
     db,
     format::{format_wire_table, print_json, Format},
 };
 
-pub fn run(status_filter: Option<&str>, format_str: Option<&str>) -> Result<()> {
-    let format = Format::from_str_or_auto(format_str).map_err(|e| anyhow!(e))?;
+pub fn run(status_filter: Option<&str>, format: Option<Format>) -> Result<()> {
+    let format = Format::resolve(format);
 
     let conn = db::open()?;
     let wires = db::list_wires(&conn, status_filter)?;

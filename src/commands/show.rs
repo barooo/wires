@@ -4,8 +4,8 @@ use wr::{
     format::{format_wire_detail_table, print_json, Format},
 };
 
-pub fn run(wire_id: &str, format_str: Option<&str>) -> Result<()> {
-    let format = Format::from_str_or_auto(format_str).map_err(|e| anyhow!(e))?;
+pub fn run(wire_id: &str, format: Option<Format>) -> Result<()> {
+    let format = Format::resolve(format);
 
     let conn = db::open()?;
     let wire_with_deps = db::get_wire_with_deps(&conn, wire_id)

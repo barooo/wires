@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use serde_json::json;
 use std::io::IsTerminal;
+use wr::format::Format;
 
 mod commands;
 
@@ -33,16 +34,16 @@ enum Commands {
         #[arg(short, long)]
         status: Option<String>,
         /// Output format (json, table). Auto-detects based on TTY.
-        #[arg(short, long)]
-        format: Option<String>,
+        #[arg(short, long, value_enum)]
+        format: Option<Format>,
     },
     /// Show wire details
     Show {
         /// Wire ID
         id: String,
         /// Output format (json, table). Auto-detects based on TTY.
-        #[arg(short, long)]
-        format: Option<String>,
+        #[arg(short, long, value_enum)]
+        format: Option<Format>,
     },
     /// Update wire fields
     Update {
@@ -93,8 +94,8 @@ enum Commands {
     /// Find wires ready to work on
     Ready {
         /// Output format (json, table). Auto-detects based on TTY.
-        #[arg(short, long)]
-        format: Option<String>,
+        #[arg(short, long, value_enum)]
+        format: Option<Format>,
     },
     /// Delete a wire and its dependencies
     Rm {
@@ -119,10 +120,8 @@ fn main() {
             description,
             priority,
         } => commands::new::run(&title, description.as_deref(), priority),
-        Commands::List { status, format } => {
-            commands::list::run(status.as_deref(), format.as_deref())
-        }
-        Commands::Show { id, format } => commands::show::run(&id, format.as_deref()),
+        Commands::List { status, format } => commands::list::run(status.as_deref(), format),
+        Commands::Show { id, format } => commands::show::run(&id, format),
         Commands::Update {
             id,
             title,
@@ -147,7 +146,7 @@ fn main() {
             wire_id,
             depends_on,
         } => commands::undep::run(&wire_id, &depends_on),
-        Commands::Ready { format } => commands::ready::run(format.as_deref()),
+        Commands::Ready { format } => commands::ready::run(format),
         Commands::Rm { id } => commands::rm::run(&id),
         Commands::Graph { format } => commands::graph::run(Some(&format)),
     };

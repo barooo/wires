@@ -10,12 +10,14 @@
 //!
 //! Users can override with `--format json` or `--format table`.
 
+use clap::ValueEnum;
 use std::io::{self, IsTerminal};
 
 /// Output format options.
 ///
 /// The format determines how wires are displayed to the user.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Implements [`ValueEnum`] for direct use with clap CLI arguments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Format {
     /// JSON output for programmatic parsing
     Json,
@@ -24,35 +26,24 @@ pub enum Format {
 }
 
 impl Format {
-    /// Parses a format string, defaulting based on TTY detection.
+    /// Returns the appropriate format based on an optional override and TTY detection.
     ///
     /// # Arguments
     ///
-    /// * `s` - Optional format string ("json" or "table")
+    /// * `format` - Optional format override from CLI
     ///
     /// # Returns
     ///
-    /// - `Some("json")` → `Format::Json`
-    /// - `Some("table")` → `Format::Table`
-    /// - `None` → Auto-detect based on stdout TTY status
-    ///
-    /// # Errors
-    ///
-    /// Returns an error for unrecognized format strings.
-    pub fn from_str_or_auto(s: Option<&str>) -> Result<Self, String> {
-        match s {
-            Some("json") => Ok(Format::Json),
-            Some("table") => Ok(Format::Table),
-            Some(other) => Err(format!("Invalid format: {}. Valid: json, table", other)),
-            None => {
-                // Auto-detect: table for TTY, json for pipes
-                if io::stdout().is_terminal() {
-                    Ok(Format::Table)
-                } else {
-                    Ok(Format::Json)
-                }
+    /// - `Some(format)` → uses the specified format
+    /// - `None` → auto-detects based on stdout TTY status (table for TTY, json for pipes)
+    pub fn resolve(format: Option<Format>) -> Self {
+        format.unwrap_or_else(|| {
+            if io::stdout().is_terminal() {
+                Format::Table
+            } else {
+                Format::Json
             }
-        }
+        })
     }
 }
 
