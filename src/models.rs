@@ -7,6 +7,7 @@
 //! - [`WireWithDeps`] - A wire with its dependency relationships
 //! - [`DependencyInfo`] - Summary info about a dependent wire
 
+use clap::ValueEnum;
 use rusqlite::types::{FromSql, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -143,15 +144,23 @@ impl ToSql for WireId {
 /// # Serialization
 ///
 /// Statuses serialize as uppercase strings: `"TODO"`, `"IN_PROGRESS"`, `"DONE"`, `"CANCELLED"`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// # CLI Usage
+///
+/// Implements [`ValueEnum`] for use with clap. Accepts case-insensitive values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
 pub enum Status {
     #[serde(rename = "TODO")]
+    #[value(alias = "TODO")]
     Todo,
     #[serde(rename = "IN_PROGRESS")]
+    #[value(alias = "IN_PROGRESS")]
     InProgress,
     #[serde(rename = "DONE")]
+    #[value(alias = "DONE")]
     Done,
     #[serde(rename = "CANCELLED")]
+    #[value(alias = "CANCELLED")]
     Cancelled,
 }
 

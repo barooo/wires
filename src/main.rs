@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use serde_json::json;
 use std::io::IsTerminal;
 use wr::format::Format;
+use wr::models::Status;
 
 mod commands;
 
@@ -30,9 +31,9 @@ enum Commands {
     },
     /// List wires
     List {
-        /// Filter by status
-        #[arg(short, long)]
-        status: Option<String>,
+        /// Filter by status (todo, in-progress, done, cancelled)
+        #[arg(short, long, value_enum)]
+        status: Option<Status>,
         /// Output format (json, table). Auto-detects based on TTY.
         #[arg(short, long, value_enum)]
         format: Option<Format>,
@@ -55,9 +56,9 @@ enum Commands {
         /// New description
         #[arg(long)]
         description: Option<String>,
-        /// New status
-        #[arg(long)]
-        status: Option<String>,
+        /// New status (todo, in-progress, done, cancelled)
+        #[arg(long, value_enum)]
+        status: Option<Status>,
         /// New priority
         #[arg(long)]
         priority: Option<i32>,
@@ -120,7 +121,7 @@ fn main() {
             description,
             priority,
         } => commands::new::run(&title, description.as_deref(), priority),
-        Commands::List { status, format } => commands::list::run(status.as_deref(), format),
+        Commands::List { status, format } => commands::list::run(status, format),
         Commands::Show { id, format } => commands::show::run(&id, format),
         Commands::Update {
             id,
@@ -128,13 +129,7 @@ fn main() {
             description,
             status,
             priority,
-        } => commands::update::run(
-            &id,
-            title.as_deref(),
-            description.as_deref(),
-            status.as_deref(),
-            priority,
-        ),
+        } => commands::update::run(&id, title.as_deref(), description.as_deref(), status, priority),
         Commands::Start { id } => commands::start::run(&id),
         Commands::Done { id } => commands::done::run(&id),
         Commands::Cancel { id } => commands::cancel::run(&id),

@@ -130,6 +130,7 @@ fn test_update_multiple_fields() {
     assert_eq!(json["priority"], 2);
 }
 
+// Invalid status values are rejected by clap at parse time
 #[test]
 fn test_update_invalid_status() {
     let temp_dir = TempDir::new().unwrap();
@@ -146,7 +147,7 @@ fn test_update_invalid_status() {
         .arg("INVALID")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Invalid status"));
+        .stderr(predicate::str::contains("invalid value 'INVALID'"));
 }
 
 #[test]

@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use serde_json::json;
 use wr::db;
+use wr::models::Status;
 
 pub fn run(wire_id: &str) -> Result<()> {
     let conn = db::open()?;
@@ -9,7 +10,7 @@ pub fn run(wire_id: &str) -> Result<()> {
     let incomplete_deps = db::check_incomplete_dependencies(&conn, wire_id)?;
 
     // Update status to DONE
-    db::update_wire(&conn, wire_id, None, None, Some("DONE"), None)?;
+    db::update_wire(&conn, wire_id, None, None, Some(Status::Done), None)?;
 
     let wire = db::get_wire_with_deps(&conn, wire_id)
         .map_err(|_| anyhow!("Wire not found: {}", wire_id))?;

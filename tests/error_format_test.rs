@@ -52,8 +52,10 @@ fn test_not_initialized_error_is_json_when_piped() {
     assert!(json["error"].as_str().unwrap().contains("wires repository"));
 }
 
+// Invalid status values are rejected by clap at parse time with helpful error messages.
+// This tests that clap correctly rejects invalid enum values.
 #[test]
-fn test_invalid_status_error_is_json_when_piped() {
+fn test_invalid_status_rejected_by_clap() {
     let temp_dir = TempDir::new().unwrap();
     init_test_repo(&temp_dir);
 
@@ -69,20 +71,15 @@ fn test_invalid_status_error_is_json_when_piped() {
     let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     let wire_id = json["id"].as_str().unwrap();
 
-    // Try invalid status
-    let output = Command::cargo_bin("wr")
+    // Try invalid status - clap will reject this at parse time
+    Command::cargo_bin("wr")
         .unwrap()
         .current_dir(&temp_dir)
         .arg("update")
         .arg(wire_id)
         .arg("--status")
         .arg("INVALID")
-        .output()
-        .unwrap();
-
-    assert!(!output.status.success());
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let json: serde_json::Value = serde_json::from_str(&stderr).unwrap();
-    assert!(json["error"].as_str().unwrap().contains("Invalid status"));
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("invalid value 'INVALID'"));
 }

@@ -2,9 +2,10 @@ use anyhow::Result;
 use wr::{
     db,
     format::{format_wire_table, print_json, Format},
+    models::Status,
 };
 
-pub fn run(status_filter: Option<&str>, format: Option<Format>) -> Result<()> {
+pub fn run(status_filter: Option<Status>, format: Option<Format>) -> Result<()> {
     let format = Format::resolve(format);
 
     let conn = db::open()?;

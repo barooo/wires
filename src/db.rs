@@ -192,14 +192,14 @@ pub fn insert_wire(conn: &Connection, wire: &crate::models::Wire) -> Result<()> 
 /// * `wire_id` - ID of the wire to update
 /// * `title` - New title, if changing
 /// * `description` - New description (`Some(Some("desc"))` to set, `Some(None)` to clear)
-/// * `status` - New status string (e.g., "TODO", "IN_PROGRESS")
+/// * `status` - New status
 /// * `priority` - New priority value
 pub fn update_wire(
     conn: &Connection,
     wire_id: &str,
     title: Option<&str>,
     description: Option<Option<&str>>,
-    status: Option<&str>,
+    status: Option<crate::models::Status>,
     priority: Option<i32>,
 ) -> Result<()> {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -246,8 +246,8 @@ pub fn update_wire(
         param_index += 1;
     }
 
-    if let Some(s) = status {
-        stmt.raw_bind_parameter(param_index, s)?;
+    if let Some(ref s) = status {
+        stmt.raw_bind_parameter(param_index, s.as_str())?;
         param_index += 1;
     }
 
@@ -331,14 +331,14 @@ fn wire_from_row(row: &rusqlite::Row) -> rusqlite::Result<crate::models::Wire> {
 /// # Arguments
 ///
 /// * `conn` - Database connection
-/// * `status_filter` - Optional status to filter by (e.g., "TODO", "IN_PROGRESS")
+/// * `status_filter` - Optional status to filter by
 ///
 /// # Returns
 ///
 /// A vector of wires ordered by creation date (newest first).
 pub fn list_wires(
     conn: &Connection,
-    status_filter: Option<&str>,
+    status_filter: Option<crate::models::Status>,
 ) -> Result<Vec<crate::models::Wire>> {
     if let Some(status) = status_filter {
         let mut stmt = conn.prepare(
@@ -346,7 +346,7 @@ pub fn list_wires(
              FROM wires WHERE status = ? ORDER BY created_at DESC",
         )?;
         let wires = stmt
-            .query_map([status], wire_from_row)?
+            .query_map([status.as_str()], wire_from_row)?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(wires)
     } else {
