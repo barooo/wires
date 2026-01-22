@@ -9,10 +9,12 @@
 //! The database is stored in `.wires/wires.db` and uses WAL mode for
 //! concurrent access support.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use crate::models::WireError;
 
 const WIRES_DIR: &str = ".wires";
 const DB_NAME: &str = "wires.db";
@@ -45,10 +47,7 @@ pub fn init(path: &Path) -> Result<()> {
     let wires_dir = path.join(WIRES_DIR);
 
     if wires_dir.exists() {
-        return Err(anyhow!(
-            "Wires already initialized at {}",
-            wires_dir.display()
-        ));
+        return Err(WireError::AlreadyInitialized(wires_dir.display().to_string()).into());
     }
 
     fs::create_dir(&wires_dir).context("Failed to create .wires directory")?;
@@ -129,7 +128,7 @@ fn find_db_from(start: &Path) -> Result<PathBuf> {
 
         match current.parent() {
             Some(parent) => current = parent,
-            None => return Err(anyhow!("Not a wires repository")),
+            None => return Err(WireError::NotARepository.into()),
         }
     }
 }
@@ -521,7 +520,7 @@ pub fn add_dependency(conn: &Connection, wire_id: &str, depends_on: &str) -> Res
     )?;
 
     if wire_exists == 0 {
-        return Err(anyhow!("Wire not found: {}", wire_id));
+        return Err(WireError::WireNotFound(wire_id.to_string()).into());
     }
 
     let depends_on_exists: i64 = conn.query_row(
@@ -531,15 +530,12 @@ pub fn add_dependency(conn: &Connection, wire_id: &str, depends_on: &str) -> Res
     )?;
 
     if depends_on_exists == 0 {
-        return Err(anyhow!("Wire not found: {}", depends_on));
+        return Err(WireError::WireNotFound(depends_on.to_string()).into());
     }
 
     // Check for circular dependency
     if let Some(cycle) = would_create_cycle(conn, wire_id, depends_on)? {
-        return Err(anyhow!(
-            "Circular dependency detected: {}",
-            cycle.join(" -> ")
-        ));
+        return Err(WireError::CircularDependency(cycle).into());
     }
 
     // Add the dependency

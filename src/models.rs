@@ -266,6 +266,39 @@ pub struct Dependency {
     pub depends_on: WireId,
 }
 
+/// Domain-specific errors for wire operations.
+///
+/// These errors represent business logic failures that can be pattern-matched
+/// for specific handling, unlike generic string errors.
+#[derive(Debug, Clone)]
+pub enum WireError {
+    /// The `.wires` directory was not found in any parent directory
+    NotARepository,
+    /// A wires repository already exists at the specified location
+    AlreadyInitialized(String),
+    /// The specified wire ID does not exist
+    WireNotFound(String),
+    /// Adding this dependency would create a circular dependency chain
+    CircularDependency(Vec<String>),
+}
+
+impl fmt::Display for WireError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            WireError::NotARepository => write!(f, "Not a wires repository"),
+            WireError::AlreadyInitialized(path) => {
+                write!(f, "Wires already initialized at {}", path)
+            }
+            WireError::WireNotFound(id) => write!(f, "Wire not found: {}", id),
+            WireError::CircularDependency(cycle) => {
+                write!(f, "Circular dependency detected: {}", cycle.join(" -> "))
+            }
+        }
+    }
+}
+
+impl std::error::Error for WireError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -355,5 +388,26 @@ mod tests {
 
         let json = serde_json::to_string(&wire).unwrap();
         assert!(!json.contains("description"));
+    }
+
+    #[test]
+    fn test_wire_error_display() {
+        assert_eq!(
+            WireError::NotARepository.to_string(),
+            "Not a wires repository"
+        );
+        assert_eq!(
+            WireError::AlreadyInitialized("/path/.wires".to_string()).to_string(),
+            "Wires already initialized at /path/.wires"
+        );
+        assert_eq!(
+            WireError::WireNotFound("abc1234".to_string()).to_string(),
+            "Wire not found: abc1234"
+        );
+        assert_eq!(
+            WireError::CircularDependency(vec!["a".to_string(), "b".to_string(), "a".to_string()])
+                .to_string(),
+            "Circular dependency detected: a -> b -> a"
+        );
     }
 }

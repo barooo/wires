@@ -1,7 +1,7 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use serde_json::json;
 use wr::db;
-use wr::models::Status;
+use wr::models::{Status, WireError};
 
 pub fn run(
     wire_id: &str,
@@ -16,7 +16,7 @@ pub fn run(
 
     // Fetch updated wire
     let wire = db::get_wire_with_deps(&conn, wire_id)
-        .map_err(|_| anyhow!("Wire not found: {}", wire_id))?;
+        .map_err(|_| WireError::WireNotFound(wire_id.to_string()))?;
 
     let output = json!({
         "id": wire.wire.id,

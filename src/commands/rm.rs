@@ -1,6 +1,7 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use serde_json::json;
 use wr::db;
+use wr::models::WireError;
 
 pub fn run(id: &str) -> Result<()> {
     let conn = db::open()?;
@@ -16,7 +17,7 @@ pub fn run(id: &str) -> Result<()> {
     )?;
 
     if exists == 0 {
-        return Err(anyhow!("Wire not found: {}", id));
+        return Err(WireError::WireNotFound(id.to_string()).into());
     }
 
     // Delete the wire (dependencies are cascaded by foreign key)
