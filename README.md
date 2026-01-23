@@ -296,6 +296,10 @@ Exit code is non-zero on error.
 
 Status arguments accept both kebab-case (`in-progress`) and uppercase (`IN_PROGRESS`) formats.
 
+## Inspired By
+
+`wires` was inspired by [beads](https://github.com/steveyegge/beads), a git-backed issue tracker designed for agentic workflows. While `wires` takes a different implementation approach (Rust + SQLite vs Go + git), the core insight remains the same: AI coding agents need persistent, structured memory that survives context loss.
+
 ## License
 
 MIT
