@@ -8,6 +8,7 @@ mod commands;
 
 #[derive(Parser)]
 #[command(name = "wr")]
+#[command(version)]
 #[command(about = "Lightweight local task tracker optimized for AI coding agents", long_about = None)]
 struct Cli {
     #[command(subcommand)]
