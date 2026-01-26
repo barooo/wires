@@ -60,9 +60,9 @@ fn test_list_format_table() {
         .arg("table")
         .assert()
         .success()
-        .stdout(predicate::str::contains("ID"))
-        .stdout(predicate::str::contains("STATUS"))
-        .stdout(predicate::str::contains("Test wire"));
+        // New format has symbols instead of headers
+        .stdout(predicate::str::contains("Test wire"))
+        .stdout(predicate::str::contains("○")); // TODO symbol
 }
 
 #[test]
@@ -79,8 +79,9 @@ fn test_ready_format_table() {
         .arg("table")
         .assert()
         .success()
-        .stdout(predicate::str::contains("ID"))
-        .stdout(predicate::str::contains("Ready wire"));
+        // New format has symbols instead of headers
+        .stdout(predicate::str::contains("Ready wire"))
+        .stdout(predicate::str::contains("○")); // TODO symbol
 }
 
 #[test]
@@ -99,7 +100,7 @@ fn test_show_format_table() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Show wire"))
-        .stdout(predicate::str::contains("TODO"));
+        .stdout(predicate::str::contains("○")); // TODO symbol
 }
 
 #[test]
@@ -137,4 +138,64 @@ fn test_list_default_is_json_when_piped() {
     // Should be valid JSON (not table) when piped
     let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert!(json.is_array());
+}
+
+#[test]
+fn test_list_shows_blocked_wires() {
+    let temp_dir = TempDir::new().unwrap();
+    init_test_repo(&temp_dir);
+
+    // Create two wires
+    let blocker_id = create_wire(&temp_dir, "Blocker");
+    let blocked_id = create_wire(&temp_dir, "Blocked");
+
+    // Add dependency
+    Command::cargo_bin("wr")
+        .unwrap()
+        .current_dir(&temp_dir)
+        .arg("dep")
+        .arg(&blocked_id)
+        .arg(&blocker_id)
+        .assert()
+        .success();
+
+    // List with table format
+    let output = Command::cargo_bin("wr")
+        .unwrap()
+        .current_dir(&temp_dir)
+        .arg("list")
+        .arg("--format")
+        .arg("table")
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Should show "← blocked by" for blocked wire
+    assert!(stdout.contains("Blocked"));
+    assert!(stdout.contains(&format!("← blocked by {}", blocker_id)));
+}
+
+#[test]
+fn test_show_format_includes_symbols() {
+    let temp_dir = TempDir::new().unwrap();
+    init_test_repo(&temp_dir);
+    let wire_id = create_wire(&temp_dir, "Show wire");
+
+    let output = Command::cargo_bin("wr")
+        .unwrap()
+        .current_dir(&temp_dir)
+        .arg("show")
+        .arg(&wire_id)
+        .arg("--format")
+        .arg("table")
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Should contain TODO symbol and priority badge
+    assert!(stdout.contains("○"));
+    assert!(stdout.contains("[pri:"));
+    assert!(stdout.contains("Show wire"));
 }

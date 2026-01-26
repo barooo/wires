@@ -181,6 +181,51 @@ impl Status {
             Status::Cancelled => "CANCELLED",
         }
     }
+
+    /// Returns whether this status blocks dependent wires.
+    ///
+    /// A dependency is considered blocking if it's not yet complete
+    /// (Done) and hasn't been abandoned (Cancelled).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use wr::models::Status;
+    /// assert!(Status::Todo.is_blocking());
+    /// assert!(Status::InProgress.is_blocking());
+    /// assert!(!Status::Done.is_blocking());
+    /// assert!(!Status::Cancelled.is_blocking());
+    /// ```
+    pub fn is_blocking(&self) -> bool {
+        matches!(self, Status::Todo | Status::InProgress)
+    }
+
+    /// Returns the Unicode symbol used to represent this status.
+    ///
+    /// # Symbols
+    ///
+    /// - `✓` (check mark) for Done
+    /// - `●` (filled circle) for InProgress
+    /// - `○` (empty circle) for Todo
+    /// - `✗` (x mark) for Cancelled
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use wr::models::Status;
+    /// assert_eq!(Status::Done.symbol(), "✓");
+    /// assert_eq!(Status::InProgress.symbol(), "●");
+    /// assert_eq!(Status::Todo.symbol(), "○");
+    /// assert_eq!(Status::Cancelled.symbol(), "✗");
+    /// ```
+    pub fn symbol(&self) -> &'static str {
+        match self {
+            Status::Done => "✓",
+            Status::InProgress => "●",
+            Status::Todo => "○",
+            Status::Cancelled => "✗",
+        }
+    }
 }
 
 impl FromStr for Status {
@@ -337,6 +382,19 @@ pub struct DependencyInfo {
     pub title: String,
     /// Current status
     pub status: Status,
+}
+
+impl From<Wire> for WireWithDeps {
+    /// Creates a WireWithDeps with no dependencies.
+    ///
+    /// Useful for wires known to have no blockers (e.g., ready wires).
+    fn from(wire: Wire) -> Self {
+        WireWithDeps {
+            wire,
+            depends_on: vec![],
+            blocks: vec![],
+        }
+    }
 }
 
 /// A dependency relationship between two wires.
@@ -533,5 +591,24 @@ mod tests {
 
         let wire = Wire::new("Test", Some("   "), 0).unwrap();
         assert_eq!(wire.description, None);
+    }
+
+    #[test]
+    fn test_status_is_blocking() {
+        // Todo and InProgress are blocking
+        assert!(Status::Todo.is_blocking());
+        assert!(Status::InProgress.is_blocking());
+
+        // Done and Cancelled are not blocking
+        assert!(!Status::Done.is_blocking());
+        assert!(!Status::Cancelled.is_blocking());
+    }
+
+    #[test]
+    fn test_status_symbol() {
+        assert_eq!(Status::Done.symbol(), "✓");
+        assert_eq!(Status::InProgress.symbol(), "●");
+        assert_eq!(Status::Todo.symbol(), "○");
+        assert_eq!(Status::Cancelled.symbol(), "✗");
     }
 }

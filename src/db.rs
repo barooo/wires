@@ -325,6 +325,55 @@ fn wire_from_row(row: &rusqlite::Row) -> rusqlite::Result<crate::models::Wire> {
     })
 }
 
+/// Map a row to a DependencyInfo struct
+fn dependency_info_from_row(row: &rusqlite::Row) -> rusqlite::Result<crate::models::DependencyInfo> {
+    use crate::models::{DependencyInfo, Status};
+    use std::str::FromStr;
+
+    Ok(DependencyInfo {
+        id: row.get(0)?,
+        title: row.get(1)?,
+        status: Status::from_str(row.get::<_, String>(2)?.as_str())
+            .map_err(|_| rusqlite::Error::InvalidQuery)?,
+    })
+}
+
+/// Fetch dependency relationships for a wire.
+///
+/// Returns (depends_on, blocks) where:
+/// - depends_on: wires this wire depends on
+/// - blocks: wires that depend on this wire
+fn fetch_wire_deps(
+    conn: &Connection,
+    wire_id: &str,
+) -> Result<(Vec<crate::models::DependencyInfo>, Vec<crate::models::DependencyInfo>)> {
+    // Get dependencies (wires this wire depends on)
+    let mut stmt = conn.prepare(
+        "SELECT w.id, w.title, w.status
+         FROM wires w
+         JOIN dependencies d ON w.id = d.depends_on
+         WHERE d.wire_id = ?1",
+    )?;
+
+    let depends_on = stmt
+        .query_map([wire_id], dependency_info_from_row)?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Get blockers (wires that depend on this wire)
+    let mut stmt = conn.prepare(
+        "SELECT w.id, w.title, w.status
+         FROM wires w
+         JOIN dependencies d ON w.id = d.wire_id
+         WHERE d.depends_on = ?1",
+    )?;
+
+    let blocks = stmt
+        .query_map([wire_id], dependency_info_from_row)?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok((depends_on, blocks))
+}
+
 /// Lists wires, optionally filtered by status.
 ///
 /// # Arguments
@@ -360,6 +409,40 @@ pub fn list_wires(
     }
 }
 
+/// Lists wires with their dependency information, optionally filtered by status.
+///
+/// Similar to `list_wires` but returns full `WireWithDeps` objects including
+/// dependency relationships.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `status_filter` - Optional status to filter by
+///
+/// # Returns
+///
+/// A vector of wires with dependencies, ordered by creation date (newest first).
+pub fn list_wires_with_deps(
+    conn: &Connection,
+    status_filter: Option<crate::models::Status>,
+) -> Result<Vec<crate::models::WireWithDeps>> {
+    use crate::models::WireWithDeps;
+
+    let wires = list_wires(conn, status_filter)?;
+
+    wires
+        .into_iter()
+        .map(|wire| {
+            let (depends_on, blocks) = fetch_wire_deps(conn, wire.id.as_str())?;
+            Ok(WireWithDeps {
+                wire,
+                depends_on,
+                blocks,
+            })
+        })
+        .collect()
+}
+
 /// Gets a wire with its full dependency information.
 ///
 /// Returns the wire along with lists of wires it depends on and wires that depend on it.
@@ -373,54 +456,15 @@ pub fn list_wires(
 ///
 /// Returns an error if the wire is not found.
 pub fn get_wire_with_deps(conn: &Connection, wire_id: &str) -> Result<crate::models::WireWithDeps> {
-    use crate::models::{DependencyInfo, Status, WireWithDeps};
-    use std::str::FromStr;
+    use crate::models::WireWithDeps;
 
-    // Get the wire
     let mut stmt = conn.prepare(
         "SELECT id, title, description, status, created_at, updated_at, priority
          FROM wires WHERE id = ?1",
     )?;
 
     let wire = stmt.query_row([wire_id], wire_from_row)?;
-
-    // Get dependencies (wires this wire depends on)
-    let mut stmt = conn.prepare(
-        "SELECT w.id, w.title, w.status
-         FROM wires w
-         JOIN dependencies d ON w.id = d.depends_on
-         WHERE d.wire_id = ?1",
-    )?;
-
-    let depends_on = stmt
-        .query_map([wire_id], |row| {
-            Ok(DependencyInfo {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                status: Status::from_str(row.get::<_, String>(2)?.as_str())
-                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    // Get blockers (wires that depend on this wire)
-    let mut stmt = conn.prepare(
-        "SELECT w.id, w.title, w.status
-         FROM wires w
-         JOIN dependencies d ON w.id = d.wire_id
-         WHERE d.depends_on = ?1",
-    )?;
-
-    let blocks = stmt
-        .query_map([wire_id], |row| {
-            Ok(DependencyInfo {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                status: Status::from_str(row.get::<_, String>(2)?.as_str())
-                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+    let (depends_on, blocks) = fetch_wire_deps(conn, wire_id)?;
 
     Ok(WireWithDeps {
         wire,
@@ -833,5 +877,112 @@ mod tests {
         let result = would_create_cycle(&conn, "d", "a").unwrap();
 
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_fetch_wire_deps_empty() {
+        let (_temp_dir, conn) = setup_test_db();
+        insert_test_wire(&conn, "a1b2c3d");
+
+        let (depends_on, blocks) = fetch_wire_deps(&conn, "a1b2c3d").unwrap();
+
+        assert!(depends_on.is_empty());
+        assert!(blocks.is_empty());
+    }
+
+    #[test]
+    fn test_fetch_wire_deps_with_dependencies() {
+        let (_temp_dir, conn) = setup_test_db();
+        insert_test_wire(&conn, "a1b2c3d");
+        insert_test_wire(&conn, "b2c3d4e");
+        insert_test_dep(&conn, "a1b2c3d", "b2c3d4e"); // a depends on b
+
+        let (depends_on, blocks) = fetch_wire_deps(&conn, "a1b2c3d").unwrap();
+
+        assert_eq!(depends_on.len(), 1);
+        assert_eq!(depends_on[0].id.as_str(), "b2c3d4e");
+        assert!(blocks.is_empty());
+    }
+
+    #[test]
+    fn test_fetch_wire_deps_with_blocks() {
+        let (_temp_dir, conn) = setup_test_db();
+        insert_test_wire(&conn, "a1b2c3d");
+        insert_test_wire(&conn, "b2c3d4e");
+        insert_test_dep(&conn, "b2c3d4e", "a1b2c3d"); // b depends on a, so a blocks b
+
+        let (depends_on, blocks) = fetch_wire_deps(&conn, "a1b2c3d").unwrap();
+
+        assert!(depends_on.is_empty());
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].id.as_str(), "b2c3d4e");
+    }
+
+    #[test]
+    fn test_fetch_wire_deps_both_directions() {
+        let (_temp_dir, conn) = setup_test_db();
+        insert_test_wire(&conn, "a1b2c3d");
+        insert_test_wire(&conn, "b2c3d4e");
+        insert_test_wire(&conn, "c3d4e5f");
+
+        // a depends on b, c depends on a
+        insert_test_dep(&conn, "a1b2c3d", "b2c3d4e");
+        insert_test_dep(&conn, "c3d4e5f", "a1b2c3d");
+
+        let (depends_on, blocks) = fetch_wire_deps(&conn, "a1b2c3d").unwrap();
+
+        assert_eq!(depends_on.len(), 1);
+        assert_eq!(depends_on[0].id.as_str(), "b2c3d4e");
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].id.as_str(), "c3d4e5f");
+    }
+
+    #[test]
+    fn test_list_wires_with_deps_empty() {
+        let (_temp_dir, conn) = setup_test_db();
+
+        let result = list_wires_with_deps(&conn, None).unwrap();
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_list_wires_with_deps_includes_dependencies() {
+        let (_temp_dir, conn) = setup_test_db();
+        insert_test_wire(&conn, "a1b2c3d");
+        insert_test_wire(&conn, "b2c3d4e");
+        insert_test_dep(&conn, "a1b2c3d", "b2c3d4e");
+
+        let result = list_wires_with_deps(&conn, None).unwrap();
+
+        assert_eq!(result.len(), 2);
+
+        // Find the wire that has a dependency
+        let wire_a = result.iter().find(|w| w.wire.id.as_str() == "a1b2c3d").unwrap();
+        assert_eq!(wire_a.depends_on.len(), 1);
+        assert_eq!(wire_a.depends_on[0].id.as_str(), "b2c3d4e");
+
+        // Find the wire that is depended on
+        let wire_b = result.iter().find(|w| w.wire.id.as_str() == "b2c3d4e").unwrap();
+        assert_eq!(wire_b.blocks.len(), 1);
+        assert_eq!(wire_b.blocks[0].id.as_str(), "a1b2c3d");
+    }
+
+    #[test]
+    fn test_list_wires_with_deps_respects_status_filter() {
+        let (_temp_dir, conn) = setup_test_db();
+        insert_test_wire(&conn, "a1b2c3d");
+
+        // Change wire to DONE
+        conn.execute("UPDATE wires SET status = 'DONE' WHERE id = 'a1b2c3d'", [])
+            .unwrap();
+
+        // Filter by TODO should return empty
+        let todo_result = list_wires_with_deps(&conn, Some(crate::models::Status::Todo)).unwrap();
+        assert!(todo_result.is_empty());
+
+        // Filter by DONE should return the wire
+        let done_result = list_wires_with_deps(&conn, Some(crate::models::Status::Done)).unwrap();
+        assert_eq!(done_result.len(), 1);
     }
 }
