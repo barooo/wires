@@ -326,7 +326,9 @@ fn wire_from_row(row: &rusqlite::Row) -> rusqlite::Result<crate::models::Wire> {
 }
 
 /// Map a row to a DependencyInfo struct
-fn dependency_info_from_row(row: &rusqlite::Row) -> rusqlite::Result<crate::models::DependencyInfo> {
+fn dependency_info_from_row(
+    row: &rusqlite::Row,
+) -> rusqlite::Result<crate::models::DependencyInfo> {
     use crate::models::{DependencyInfo, Status};
     use std::str::FromStr;
 
@@ -346,7 +348,10 @@ fn dependency_info_from_row(row: &rusqlite::Row) -> rusqlite::Result<crate::mode
 fn fetch_wire_deps(
     conn: &Connection,
     wire_id: &str,
-) -> Result<(Vec<crate::models::DependencyInfo>, Vec<crate::models::DependencyInfo>)> {
+) -> Result<(
+    Vec<crate::models::DependencyInfo>,
+    Vec<crate::models::DependencyInfo>,
+)> {
     // Get dependencies (wires this wire depends on)
     let mut stmt = conn.prepare(
         "SELECT w.id, w.title, w.status
@@ -958,12 +963,18 @@ mod tests {
         assert_eq!(result.len(), 2);
 
         // Find the wire that has a dependency
-        let wire_a = result.iter().find(|w| w.wire.id.as_str() == "a1b2c3d").unwrap();
+        let wire_a = result
+            .iter()
+            .find(|w| w.wire.id.as_str() == "a1b2c3d")
+            .unwrap();
         assert_eq!(wire_a.depends_on.len(), 1);
         assert_eq!(wire_a.depends_on[0].id.as_str(), "b2c3d4e");
 
         // Find the wire that is depended on
-        let wire_b = result.iter().find(|w| w.wire.id.as_str() == "b2c3d4e").unwrap();
+        let wire_b = result
+            .iter()
+            .find(|w| w.wire.id.as_str() == "b2c3d4e")
+            .unwrap();
         assert_eq!(wire_b.blocks.len(), 1);
         assert_eq!(wire_b.blocks[0].id.as_str(), "a1b2c3d");
     }

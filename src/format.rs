@@ -122,7 +122,10 @@ pub fn format_wire_detail_table(wire: &crate::models::WireWithDeps) -> String {
     // Compact header: symbol + id + title + [pri:N]
     output.push_str(&format!(
         "{} {}  {}  [pri:{}]\n",
-        symbol, wire.wire.id.as_str(), wire.wire.title, wire.wire.priority
+        symbol,
+        wire.wire.id.as_str(),
+        wire.wire.title,
+        wire.wire.priority
     ));
 
     // Description (if present)

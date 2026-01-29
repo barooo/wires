@@ -20,7 +20,18 @@ cargo build              # debug build
 cargo build --release    # release build
 cargo test               # run tests
 cargo clippy             # lints
+cargo fmt                # format code
 ```
+
+## Quality Checks (run before committing)
+
+```bash
+cargo fmt --check        # verify formatting
+cargo clippy             # lints
+cargo test               # run tests
+```
+
+All three must pass before committing.
 
 ## Conventions
 
